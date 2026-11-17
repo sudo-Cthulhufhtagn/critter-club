@@ -7,26 +7,35 @@ device, or host an online room (PeerJS, no backend) that friends join with a 4-l
 
 **Goal:** be first to the target score: 40 (2 players), 35 (3), 30 (4).
 
-The 56-card deck is shuffled and two discard piles start with one face-up card each. Hands start empty.
+The 58-card deck is shuffled and two discard piles start with one face-up card each. Hands start empty.
 
 **On your turn**
 1. **Get a card.** Draw 2 from the deck, keep 1, and put the other face up on a discard pile
    (if one pile is empty you must use it). *Or* take the top card of either discard pile.
-2. **Play pairs** (optional, any number). Two matching pair cards go face up in front of you.
+2. **Play pairs** (optional, any number). Two matching duo cards go face up in front of you.
    Each pair scores 1 point and triggers its trick:
-   - **Capybara**: look at the top 3 cards of the deck and keep 1. The others go to the smaller discard pile.
-   - **Raccoon**: give one of your cards to an opponent and take a random card from their hand.
-   - **Fox**: take the top card of a discard pile.
-   - **Rabbit**: take another turn after this one.
+   - **Fox** (Crab): look through one discard pile and take **any** card from it.
+   - **Rabbit** (Boat): take another turn after this one.
+   - **Capybara** (Fish): add the top card of the deck to your hand.
+   - **Raccoon + Badger** (Swimmer + Shark): steal one random card from a chosen opponent (one-way).
 3. **Finish.** If your cards are worth 7+ points you may **Stop** or call **Last Chance**. Otherwise end your turn.
 
-**Collectibles:** Wombat 1/3/6/10 for 1/2/3/4+ · Hedgehog 1 per distinct color among your hedgehogs · Penguin 4 per 2.
-**Multipliers** (worth 0 alone): Owl +1 per Fox · Koala +2 per Wombat · Bear +1 per Capybara or Raccoon.
-**Lion** (one in the deck): 1 point per card in your largest color group.
+**Duos score 1 point per pair whether played or still in your hand.** Fox/Rabbit/Capybara pair with their
+own kind; Raccoon and Badger pair only with each other (the pair count is min of the two).
+
+**Collectibles** (by how many you hold):
+- Wombat: 0/2/4/6/8/10 for 1–6 · Hedgehog: 0/3/6/9/12 for 1–5 · Penguin: 1/3/5 for 1–3 · Mole: 0/5 for 1–2.
+
+**Multipliers** (worth 0 alone): Owl 1 per Rabbit · Koala 1 per Capybara · Bear 2 per Penguin · Lion 3 per Mole.
+A multiplier never counts as its own base (the Owl is not a Rabbit, etc.).
+
+**Deer** (mermaids): each Deer scores your next-largest **distinct** color group (Deer count as black & white).
+Two Deer with color counts {blue 4, green 3, …} score 4 + 3 = 7. **Holding all four Deer wins the game instantly.**
+
 "Your cards" means your hand plus your played pairs.
 
 **Colors:** common cards come in 7 colors (navy, teal, coral, sand, lilac, mint, black & white).
-The Owl, Koala, Bear and Lion each have their own unique color.
+Deer are black & white; the Owl, Koala, Bear and Lion each have their own unique color.
 **Color bonus** = the number of your cards in your most common color.
 
 **Ending a round**
@@ -39,7 +48,7 @@ The Owl, Koala, Bear and Lion each have their own unique color.
 The next round reshuffles everything and the next player starts.
 
 ### Simplifications
-- Capybara leftovers always go to the smaller discard pile (no per-card choice).
+- Fox (Crab) reveals both discard piles to the chooser, who takes one card from either.
 - Calling Last Chance forfeits a pending Rabbit extra turn.
 - A player who disconnects mid-game is replaced by a bot. Nobody can join mid-game.
 
@@ -59,7 +68,7 @@ npm run build    # static build in dist/ (deployed to GitHub Pages by .github/wo
 
 ## Credits
 
-The animal icons (capybara, raccoon-head, fox, rabbit, hedgehog, penguin, barn-owl, koala, bear-head, lion)
-come from [game-icons.net](https://game-icons.net) by Lorc, Delapouite & contributors. They are licensed under
+The animal icons (capybara, raccoon-head, fox, rabbit, badger, hedgehog, penguin, mole, stag-head, barn-owl,
+koala, bear-head, lion) come from [game-icons.net](https://game-icons.net) by Lorc, Delapouite & contributors. They are licensed under
 [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) and were obtained via `@iconify-json/game-icons`.
 The wombat is original art for this project.

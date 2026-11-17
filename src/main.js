@@ -4,7 +4,7 @@ import { iconSVG } from './icons.js';
 import { createHost, createClient } from './net.js';
 import qrcode from 'qrcode-generator';
 
-const { CARD_TYPES, COLOR_NAMES, PAIR_TYPES } = game;
+const { CARD_TYPES, COLOR_NAMES } = game;
 const LS = 'critterclub:name';
 const BOT_NAMES = ['Pip', 'Moss', 'Fern'];
 const MAX = 4;
@@ -225,7 +225,7 @@ function renderTable() {
   const myTurn = cur.id === myId, step = myTurn ? v.step : null;
   const bot = (id) => v.bots?.includes(id);
   const opps = v.players.filter((p) => p.id !== myId);
-  const pileGlow = (i) => (step === 'draw' || step === 'fox') ? v.discards[i].count > 0
+  const pileGlow = (i) => step === 'draw' ? v.discards[i].count > 0
     : step === 'choose' && pendSel != null && !(v.discards[1 - i].count === 0 && v.discards[i].count > 0); // an empty pile is forced
 
   let prompt = '', buttons = '', pending = '';
@@ -234,18 +234,19 @@ function renderTable() {
   else if (step === 'choose') {
     prompt = pendSel == null ? 'Tap the card to keep.' : 'Now tap a discard pile for the other card.';
     pending = v.pending.map((c, i) => cardHTML(c, { act: 'pend', cls: pendSel === i ? 'sel' : '', attrs: `data-i="${i}"` })).join('');
-  } else if (step === 'capybara') {
-    prompt = 'Capybara: keep one card. The rest go to the smaller discard pile.';
-    pending = v.pending.map((c, i) => cardHTML(c, { act: 'capy', attrs: `data-i="${i}"` })).join('');
-  } else if (step === 'raccoon') {
-    prompt = sel.length ? 'Now pick an opponent to swap with (you get a random card).' : 'Raccoon: pick one of your cards to give away.';
-    if (sel.length) buttons = opps.filter((p) => p.handCount).map((p) => `<button class="secondary" data-act="raccoon" data-target="${p.id}">Swap with ${esc(p.name)}</button>`).join('');
-  } else if (step === 'fox') prompt = 'Fox: take the top card of a discard pile.';
-  else if (step === 'play') {
+  } else if (step === 'steal') {
+    prompt = 'Raccoon + Badger: steal a random card from an opponent.';
+    buttons = opps.filter((p) => p.handCount).map((p) => `<button class="secondary" data-act="steal" data-target="${p.id}">Steal from ${esc(p.name)}</button>`).join('');
+  } else if (step === 'fox') {
+    prompt = 'Fox: look through a pile and take any card from it.';
+    pending = (v.piles || []).map((pile, pi) => pile.length
+      ? `<div class="pilegroup"><span class="plabel">Pile ${pi + 1}</span><div class="pcards">${pile.map((c) => cardHTML(c, { act: 'foxpick', attrs: `data-pile="${pi}"` })).join('')}</div></div>`
+      : '').join('');
+  } else if (step === 'play') {
     const selCards = sel.map((id) => me.hand.find((c) => c.id === id));
-    const pairOk = selCards.length === 2 && selCards[0].type === selCards[1].type && PAIR_TYPES.includes(selCards[0].type);
+    const pairOk = selCards.length === 2 && !!game.pairEffect(selCards[0].type, selCards[1].type);
     prompt = v.extraTurn ? 'Rabbit: you get another turn after this one. ' : '';
-    prompt += 'Select two matching Capybaras, Raccoons, Foxes or Rabbits to play a pair.';
+    prompt += 'Play a pair: two matching Foxes, Rabbits or Capybaras — or a Raccoon + Badger.';
     buttons = `<button class="secondary" data-act="pair" ${pairOk ? '' : 'disabled'}>Play pair</button>
       <button class="primary" data-act="end">End turn</button>
       ${v.canEnd ? `<button class="warn" data-act="stop">Stop</button><button class="danger" data-act="call">Last Chance</button>` : ''}`;
@@ -288,6 +289,7 @@ function renderTable() {
 function reasonText(r) {
   const n = (id) => esc(view.players[id].name);
   if (r.reason === 'void') return 'The deck ran out — nobody scores this round.';
+  if (r.reason === 'mermaids') return `${n(r.callerId)} collected all four Deer and wins the game instantly!`;
   if (r.reason === 'stop') return `${n(r.callerId)} stopped. Everyone scores their cards (no color bonus).`;
   return r.success
     ? `${n(r.callerId)}'s Last Chance worked! They score cards + color bonus; everyone else scores only their color bonus.`
@@ -351,19 +353,17 @@ app.addEventListener('click', (e) => {
     case 'pile': {
       const pile = +el.dataset.pile;
       if (view.step === 'draw') return send({ type: 'take', pile });
-      if (view.step === 'fox') return send({ type: 'fox', pile });
       if (view.step === 'choose' && pendSel != null) return send({ type: 'keep', index: pendSel, pile });
       return;
     }
     case 'pend': pendSel = i; return render();
-    case 'capy': return send({ type: 'capyKeep', index: i });
+    case 'foxpick': return send({ type: 'fox', pile: +el.dataset.pile, cardId: +el.dataset.id });
     case 'hand': {
       const id = +el.dataset.id;
-      if (view.step === 'raccoon' && view.players[view.currentIdx].id === myId) sel = sel[0] === id ? [] : [id];
-      else if (view.step === 'play') sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id].slice(-2);
+      if (view.step === 'play') sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id].slice(-2);
       return render();
     }
-    case 'raccoon': return send({ type: 'raccoon', target: +el.dataset.target, cardId: sel[0] });
+    case 'steal': return send({ type: 'steal', target: +el.dataset.target });
     case 'pair': return send({ type: 'pair', cards: sel });
     case 'end': case 'stop': case 'call': return send({ type: a });
     case 'next': return send({ type: 'nextRound' });

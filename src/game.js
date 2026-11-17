@@ -7,25 +7,36 @@ export const COLOR_NAMES = {
   gold: 'Gold', silver: 'Silver', rust: 'Rust', crimson: 'Crimson',
 };
 
-// THE card table: every count lives here (56 cards). Common cards cycle through COLORS;
-// rare cards carry their own unique `color`.
+// THE card table: every count lives here (58 cards, faithful to Sea Salt & Paper). Common cards
+// cycle through COLORS; mermaids + multipliers carry their own fixed `color`.
 export const CARD_TYPES = {
-  capybara: { kind: 'pair', count: 10, name: 'Capybara', icon: 'capybara', text: 'Pair: peek 3, keep 1' },
-  raccoon:  { kind: 'pair', count: 7,  name: 'Raccoon',  icon: 'raccoon-head', text: 'Pair: swap a card' },
-  fox:      { kind: 'pair', count: 7,  name: 'Fox',      icon: 'fox', text: 'Pair: take a discard' },
-  rabbit:   { kind: 'pair', count: 7,  name: 'Rabbit',   icon: 'rabbit', text: 'Pair: extra turn' },
-  wombat:   { kind: 'collect', count: 6, name: 'Wombat',   icon: 'wombat', text: '1·3·6·10 for 1–4' },
-  hedgehog: { kind: 'collect', count: 7, name: 'Hedgehog', icon: 'hedgehog', text: '1 per color' },
-  penguin:  { kind: 'collect', count: 8, name: 'Penguin',  icon: 'penguin', text: '4 per 2' },
-  owl:      { kind: 'mult', count: 1, color: 'gold',   name: 'Owl',   icon: 'barn-owl', text: '+1 per Fox' },
-  koala:    { kind: 'mult', count: 1, color: 'silver', name: 'Koala', icon: 'koala', text: '+2 per Wombat' },
-  bear:     { kind: 'mult', count: 1, color: 'rust',   name: 'Bear',  icon: 'bear-head', text: '+1 per Capybara or Raccoon' },
-  lion:     { kind: 'special', count: 1, color: 'crimson', name: 'Lion', icon: 'lion', text: '1 per card of your top color' },
+  fox:      { kind: 'duo', count: 9, name: 'Fox',      icon: 'fox', text: 'Pair: take any card from one pile' },
+  rabbit:   { kind: 'duo', count: 8, name: 'Rabbit',   icon: 'rabbit', text: 'Pair: take another turn' },
+  capybara: { kind: 'duo', count: 7, name: 'Capybara', icon: 'capybara', text: 'Pair: draw the top of the deck' },
+  raccoon:  { kind: 'duo', count: 5, name: 'Raccoon',  icon: 'raccoon-head', text: 'With a Badger: steal a card' },
+  badger:   { kind: 'duo', count: 5, name: 'Badger',   icon: 'badger', text: 'With a Raccoon: steal a card' },
+  wombat:   { kind: 'collect', count: 6, name: 'Wombat',   icon: 'wombat', text: '0·2·4·6·8·10 for 1–6' },
+  hedgehog: { kind: 'collect', count: 5, name: 'Hedgehog', icon: 'hedgehog', text: '0·3·6·9·12 for 1–5' },
+  penguin:  { kind: 'collect', count: 3, name: 'Penguin',  icon: 'penguin', text: '1·3·5 for 1–3' },
+  mole:     { kind: 'collect', count: 2, name: 'Mole',     icon: 'mole', text: '0·5 for 1–2' },
+  deer:     { kind: 'mermaid', count: 4, color: 'mono', name: 'Deer', icon: 'stag-head', text: 'Scores a color group; all 4 win' },
+  owl:      { kind: 'mult', count: 1, color: 'gold',    name: 'Owl',   icon: 'barn-owl', text: '1 per Rabbit' },
+  koala:    { kind: 'mult', count: 1, color: 'silver',  name: 'Koala', icon: 'koala', text: '1 per Capybara' },
+  bear:     { kind: 'mult', count: 1, color: 'rust',    name: 'Bear',  icon: 'bear-head', text: '2 per Penguin' },
+  lion:     { kind: 'mult', count: 1, color: 'crimson', name: 'Lion',  icon: 'lion', text: '3 per Mole' },
 };
-export const PAIR_TYPES = Object.keys(CARD_TYPES).filter((t) => CARD_TYPES[t].kind === 'pair');
+export const PAIR_TYPES = Object.keys(CARD_TYPES).filter((t) => CARD_TYPES[t].kind === 'duo');
 export const TARGETS = { 2: 40, 3: 35, 4: 30 };
 export const MIN_TO_END = 7;
-const WOMBAT_PTS = [0, 1, 3, 6, 10];
+// Collector curves, indexed by how many you hold (0 = none).
+const COLLECT = { wombat: [0, 0, 2, 4, 6, 8, 10], hedgehog: [0, 0, 3, 6, 9, 12], penguin: [0, 1, 3, 5], mole: [0, 0, 5] };
+
+// The duo effect a pair of these two types triggers, or null if they don't pair.
+export function pairEffect(t1, t2) {
+  if (t1 === t2 && (t1 === 'fox' || t1 === 'rabbit' || t1 === 'capybara')) return t1;
+  if ((t1 === 'raccoon' && t2 === 'badger') || (t1 === 'badger' && t2 === 'raccoon')) return 'steal';
+  return null;
+}
 
 export function buildDeck() {
   const deck = [];
@@ -45,28 +56,39 @@ export function shuffle(a) {
 }
 
 // ---------- scoring ----------
-// `cards` = hand + played cards; `pairs` = number of played pairs.
-export function scoreCards(cards, pairs) {
+// `cards` = hand + played cards. Duos score whether held or played.
+export function scoreCards(cards) {
   const n = (t) => cards.filter((c) => c.type === t).length;
   const byColor = {};
   for (const c of cards) byColor[c.color] = (byColor[c.color] || 0) + 1;
   const colorBonus = Math.max(0, ...Object.values(byColor));
   const items = [];
   const add = (label, pts) => items.push({ label, pts });
+  // Duos: 1 pt per pair, held OR played. Mixed Raccoon+Badger pairs = min of the two counts.
+  const pairs = Math.floor(n('fox') / 2) + Math.floor(n('rabbit') / 2) + Math.floor(n('capybara') / 2)
+    + Math.min(n('raccoon'), n('badger'));
   if (pairs) add(`${pairs} pair${pairs > 1 ? 's' : ''}`, pairs);
-  const w = n('wombat');
-  if (w) add(`${w} Wombat`, WOMBAT_PTS[Math.min(w, 4)]);
-  const hedgeColors = new Set(cards.filter((c) => c.type === 'hedgehog').map((c) => c.color)).size;
-  if (hedgeColors) add(`Hedgehogs, ${hedgeColors} color${hedgeColors > 1 ? 's' : ''}`, hedgeColors);
-  if (n('penguin')) add(`${n('penguin')} Penguin`, Math.floor(n('penguin') / 2) * 4);
-  if (n('owl')) add(`Owl × ${n('fox')} Fox`, n('owl') * n('fox'));
-  if (n('koala')) add(`Koala × ${w} Wombat`, n('koala') * 2 * w);
-  if (n('bear')) add(`Bear × ${n('capybara') + n('raccoon')} Capybara/Raccoon`, n('bear') * (n('capybara') + n('raccoon')));
-  if (n('lion')) add(`Lion × ${colorBonus} top color`, n('lion') * colorBonus);
+  for (const [t, tbl] of Object.entries(COLLECT)) {
+    const c = n(t);
+    if (c) add(`${c} ${CARD_TYPES[t].name}`, tbl[Math.min(c, tbl.length - 1)]);
+  }
+  // Mermaids: each deer scores the next-largest distinct color group (deer themselves count as mono).
+  const deer = n('deer');
+  if (deer) {
+    const sizes = Object.values(byColor).sort((a, b) => b - a);
+    let pts = 0;
+    for (let i = 0; i < deer; i++) pts += sizes[i] || 0;
+    add(`${deer} Deer`, pts);
+  }
+  // Multipliers (0 on their own; never count as their own base since each has its own type).
+  if (n('owl')) add(`Owl × ${n('rabbit')} Rabbit`, n('owl') * n('rabbit'));
+  if (n('koala')) add(`Koala × ${n('capybara')} Capybara`, n('koala') * n('capybara'));
+  if (n('bear')) add(`Bear × ${n('penguin')} Penguin`, n('bear') * 2 * n('penguin'));
+  if (n('lion')) add(`Lion × ${n('mole')} Mole`, n('lion') * 3 * n('mole'));
   return { items, total: items.reduce((a, b) => a + b.pts, 0), colorBonus };
 }
 export const allCards = (p) => [...p.hand, ...p.played.flat()];
-export const playerScore = (p) => scoreCards(allCards(p), p.played.length);
+export const playerScore = (p) => scoreCards(allCards(p));
 
 // ---------- game flow ----------
 export function startGame(names) {
@@ -96,8 +118,17 @@ const takeById = (arr, id) => { const i = arr.findIndex((c) => c.id === id); ret
 // The pile a card must go to: an empty pile is forced; otherwise the caller's choice.
 const isPile = (pile) => pile === 0 || pile === 1; // untrusted input: 'constructor' etc. must not index arrays
 const pileOk = (s, pile) => isPile(pile) && !(s.discards[1 - pile].length === 0 && s.discards[pile].length > 0);
-const smallerPile = (s) => (s.discards[1].length < s.discards[0].length ? 1 : 0);
 export const canEnd = (s) => s.phase === 'playing' && s.step === 'play' && !s.call && playerScore(cur(s)).total >= MIN_TO_END;
+
+// Holding all 4 Deer ends the game instantly — call after any card enters a hand.
+function checkMermaid(s, p) {
+  if (p.hand.filter((c) => c.type === 'deer').length < 4) return;
+  log(s, `${p.name} holds all four Deer — instant win!`);
+  const rows = s.players.map((q) => ({ id: q.id, name: q.name, hand: q.hand, played: q.played, breakdown: playerScore(q), gained: 0 }));
+  s.result = { reason: 'mermaids', callerId: p.id, success: true, rows };
+  s.phase = 'gameOver';
+  s.winnerIds = [p.id];
+}
 
 export function act(s, pid, a) {
   if (!a || typeof a !== 'object') return false;
@@ -113,7 +144,7 @@ export function act(s, pid, a) {
       // ponytail: deck empty when you must draw → round ends, nobody scores.
       if (!s.deck.length) { log(s, 'The deck ran out — nobody scores this round.'); endRound(s, 'void'); return true; }
       s.pending = s.deck.splice(-2).reverse();
-      if (s.pending.length === 1) { p.hand.push(s.pending.pop()); s.step = 'play'; }
+      if (s.pending.length === 1) { p.hand.push(s.pending.pop()); s.step = 'play'; checkMermaid(s, p); }
       else s.step = 'choose';
       log(s, `${p.name} draws from the deck.`);
       return true;
@@ -125,6 +156,7 @@ export function act(s, pid, a) {
       p.hand.push(c);
       s.step = 'play';
       log(s, `${p.name} takes a ${CARD_TYPES[c.type].name} from pile ${a.pile + 1}.`);
+      checkMermaid(s, p);
       return true;
     }
     return false;
@@ -136,37 +168,32 @@ export function act(s, pid, a) {
     p.hand.push(kept);
     s.discards[a.pile].push(s.pending.pop());
     s.step = 'play';
+    checkMermaid(s, p);
     return true;
   }
 
-  if (s.step === 'capybara') {
-    if (a.type !== 'capyKeep' || !Number.isInteger(a.index) || !s.pending[a.index]) return false;
-    const [kept] = s.pending.splice(a.index, 1);
-    p.hand.push(kept);
-    // ponytail: the rest go to the smaller pile one by one — no per-card pile choice.
-    while (s.pending.length) s.discards[smallerPile(s)].push(s.pending.pop());
-    s.step = 'play';
-    return true;
-  }
-
-  if (s.step === 'raccoon') {
-    if (a.type !== 'raccoon') return false;
+  // Swimmer+Shark: steal one random card from a chosen opponent (one-way, no swap-back).
+  if (s.step === 'steal') {
+    if (a.type !== 'steal') return false;
     const t = Number.isInteger(a.target) && s.players[a.target];
-    if (!t || t.id === pid || !t.hand.length || !p.hand.some((c) => c.id === a.cardId)) return false;
-    const mine = takeById(p.hand, a.cardId);
+    if (!t || t.id === pid || !t.hand.length) return false;
     const theirs = t.hand.splice(Math.floor(Math.random() * t.hand.length), 1)[0];
-    p.hand.push(theirs); t.hand.push(mine);
+    p.hand.push(theirs);
     s.step = 'play';
-    log(s, `${p.name} swaps a card with ${t.name}.`);
+    log(s, `${p.name} steals a card from ${t.name}.`);
+    checkMermaid(s, p);
     return true;
   }
 
+  // Crab: look through one pile and take ANY card from it.
   if (s.step === 'fox') {
     if (a.type !== 'fox' || !isPile(a.pile) || !s.discards[a.pile].length) return false;
-    const c = s.discards[a.pile].pop();
+    const c = takeById(s.discards[a.pile], a.cardId);
+    if (!c) return false;
     p.hand.push(c);
     s.step = 'play';
     log(s, `${p.name} takes a ${CARD_TYPES[c.type].name} from pile ${a.pile + 1}.`);
+    checkMermaid(s, p);
     return true;
   }
 
@@ -187,15 +214,18 @@ export function act(s, pid, a) {
 function playPair(s, p, ids) {
   if (!Array.isArray(ids) || ids.length !== 2 || ids[0] === ids[1]) return false;
   const cards = ids.map((id) => p.hand.find((c) => c.id === id));
-  if (cards.some((c) => !c) || cards[0].type !== cards[1].type || !PAIR_TYPES.includes(cards[0].type)) return false;
+  if (cards.some((c) => !c)) return false;
+  const eff = pairEffect(cards[0].type, cards[1].type);
+  if (!eff) return false;
   const pair = ids.map((id) => takeById(p.hand, id));
   p.played.push(pair);
-  const type = pair[0].type;
-  log(s, `${p.name} plays a pair of ${CARD_TYPES[type].name}s.`);
-  if (type === 'capybara' && s.deck.length) { s.pending = s.deck.splice(-3).reverse(); s.step = 'capybara'; }
-  else if (type === 'raccoon' && p.hand.length && s.players.some((q) => q.id !== p.id && q.hand.length)) s.step = 'raccoon';
-  else if (type === 'fox' && (s.discards[0].length || s.discards[1].length)) s.step = 'fox';
-  else if (type === 'rabbit') s.extraTurn = true;
+  log(s, cards[0].type === cards[1].type
+    ? `${p.name} plays a pair of ${CARD_TYPES[cards[0].type].name}s.`
+    : `${p.name} plays a Raccoon + Badger.`);
+  if (eff === 'capybara') { if (s.deck.length) { p.hand.push(s.deck.pop()); checkMermaid(s, p); } } // Fish: draw top to hand
+  else if (eff === 'steal') { if (s.players.some((q) => q.id !== p.id && q.hand.length)) s.step = 'steal'; }
+  else if (eff === 'fox') { if (s.discards[0].length || s.discards[1].length) s.step = 'fox'; }
+  else if (eff === 'rabbit') s.extraTurn = true;
   return true;
 }
 
@@ -241,6 +271,8 @@ export function publicState(s, viewerId) {
     ...rest,
     deckCount: deck.length,
     discards: s.discards.map((d) => ({ top: d[d.length - 1] || null, count: d.length })),
+    // Crab reveals the piles to the chooser only.
+    piles: mine && s.step === 'fox' ? s.discards.map((d) => [...d]) : null,
     pending: mine ? s.pending : [],
     pendingCount: s.pending.length,
     players: s.players.map((p) => ({
@@ -260,14 +292,15 @@ export function legalActions(s) {
   const piles = [0, 1].filter((i) => s.discards[i].length);
   if (s.step === 'draw') { out.push({ type: 'draw' }); piles.forEach((pile) => out.push({ type: 'take', pile })); }
   if (s.step === 'choose') for (const index of [0, 1]) for (const pile of [0, 1]) if (pileOk(s, pile)) out.push({ type: 'keep', index, pile });
-  if (s.step === 'capybara') s.pending.forEach((_, index) => out.push({ type: 'capyKeep', index }));
-  if (s.step === 'raccoon') for (const t of s.players) if (t.id !== p.id && t.hand.length) for (const c of p.hand) out.push({ type: 'raccoon', target: t.id, cardId: c.id });
-  if (s.step === 'fox') piles.forEach((pile) => out.push({ type: 'fox', pile }));
+  if (s.step === 'steal') for (const t of s.players) if (t.id !== p.id && t.hand.length) out.push({ type: 'steal', target: t.id });
+  if (s.step === 'fox') piles.forEach((pile) => s.discards[pile].forEach((c) => out.push({ type: 'fox', pile, cardId: c.id })));
   if (s.step === 'play') {
-    for (const t of PAIR_TYPES) {
+    for (const t of ['fox', 'rabbit', 'capybara']) {
       const cs = p.hand.filter((c) => c.type === t);
       if (cs.length >= 2) out.push({ type: 'pair', cards: [cs[0].id, cs[1].id] });
     }
+    const rac = p.hand.find((c) => c.type === 'raccoon'), bad = p.hand.find((c) => c.type === 'badger');
+    if (rac && bad) out.push({ type: 'pair', cards: [rac.id, bad.id] });
     out.push({ type: 'end' });
     if (canEnd(s)) out.push({ type: 'stop' }, { type: 'call' });
   }
@@ -287,9 +320,10 @@ export function botAction(s) {
     const idx = want(s.pending[1]) && !want(s.pending[0]) ? 1 : 0;
     return acts.find((a) => a.index === idx);
   }
-  if (s.step === 'capybara') {
-    const i = s.pending.findIndex(want);
-    return { type: 'capyKeep', index: Math.max(0, i) };
+  if (s.step === 'steal') return acts[0]; // steal from the first opponent who has cards
+  if (s.step === 'fox') {
+    const good = acts.find((a) => want(s.discards[a.pile].find((c) => c.id === a.cardId)));
+    return good || acts[0];
   }
   if (s.step === 'play') {
     const pair = acts.find((a) => a.type === 'pair');
