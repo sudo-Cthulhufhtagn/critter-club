@@ -263,7 +263,10 @@ function endRound(s, reason) {
   const best = Math.max(...s.players.map((p) => p.score));
   if (best >= s.target) {
     s.phase = 'gameOver';
-    s.winnerIds = s.players.filter((p) => p.score === best).map((p) => p.id);
+    // Rulebook tie-break: among those tied on total, the one who scored most THIS round wins.
+    const tied = s.players.filter((p) => p.score === best).map((p) => p.id);
+    const topGain = Math.max(...tied.map((id) => rows[id].gained));
+    s.winnerIds = tied.filter((id) => rows[id].gained === topGain);
   } else s.phase = 'roundEnd';
 }
 

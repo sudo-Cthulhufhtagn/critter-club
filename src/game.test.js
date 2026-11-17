@@ -301,4 +301,14 @@ for (const junk of ['constructor', '__proto__', '0', 2]) {
   assert.equal(act(s, 0, { type: 'steal', target: junk }), false);
 }
 
+// ---------- game-end tie-break: most points this round wins ----------
+s = startGame(['A', 'B']);
+s.players[0].score = 30; s.players[1].score = 28;        // both reach 40 this round
+s.players[0].hand = rep('wombat', 6);                     // scores 10 -> 40
+s.players[1].hand = rep('hedgehog', 5);                   // scores 12 -> 40
+s.currentIdx = 0; s.step = 'play'; s.call = null;
+ok(s, 0, { type: 'stop' });
+assert.equal(s.phase, 'gameOver');
+assert.deepEqual(s.winnerIds, [1], 'tie on total broken by most points in the last round');
+
 console.log('game.test.js: all assertions passed');
