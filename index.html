@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#16302b">
+  <title>Critter Club</title>
+</head>
+<body>
+  <button id="helpBtn" class="helpbtn" aria-label="How to play" title="How to play">?</button>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <main id="app"></main>
+
+  <dialog id="help">
+    <form method="dialog" class="dhead"><h2>How to play</h2><button class="mini" aria-label="Close">✕</button></form>
+    <p><b>Goal:</b> first to the target score wins (2 players: 40, 3: 35, 4: 30).</p>
+    <h3>Your turn</h3>
+    <ol>
+      <li><b>Get a card:</b> draw 2 from the deck, keep 1 and put the other face up on a discard pile (an empty pile must be used) — <i>or</i> take the top card of a discard pile.</li>
+      <li><b>Play pairs</b> (optional, any number): two matching Capybaras, Raccoons, Foxes or Rabbits go face up in front of you and do their trick. Each played pair is worth 1 point.</li>
+      <li><b>End:</b> if your cards are worth 7+ you may <b>Stop</b> or call <b>Last Chance</b>; otherwise end your turn.</li>
+    </ol>
+    <h3>Ending a round</h3>
+    <p><b>Stop:</b> the round ends now; everyone scores their cards.</p>
+    <p><b>Last Chance:</b> everyone else gets one more turn. If your card score is then at least as high as everyone else's, you score cards + color bonus and they score only their color bonus. If not, you score only your color bonus and they score their cards.</p>
+    <p><b>Color bonus</b> = how many of your cards (hand + played) share your most common color.</p>
+    <p class="muted">If the deck is empty when you have to draw, the round ends and nobody scores.</p>
+    <h3>The critters</h3>
+    <div id="helpCards"></div>
+  </dialog>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
