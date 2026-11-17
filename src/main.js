@@ -8,6 +8,10 @@ const { CARD_TYPES, COLOR_NAMES } = game;
 const LS = 'critterclub:name';
 const BOT_NAMES = ['Pip', 'Moss', 'Fern'];
 const MAX = 4;
+// Original colorblind markers (not ColorADD): a distinct shape per common color, chemical-style codes for the uniques.
+const MARKS = { navy: '■', teal: '▲', coral: '●', sand: '◆', lilac: '★', mint: '✚', mono: '◐', gold: 'Au', silver: 'Ag', rust: 'Fe', crimson: 'Cr' };
+const MULT_OF = { owl: 'rabbit', koala: 'capybara', bear: 'penguin', lion: 'mole' };
+let mineCards = [], ownIds = new Set(); // viewer's hand + played cards (for personalised hover points)
 
 // ---------- runtime state ----------
 let mode = 'local';        // 'local' (you + bots) | 'host' | 'client'
@@ -138,24 +142,43 @@ function goHome() {
 }
 
 // ---------- card HTML ----------
-function cardHTML(c, { cls = '', act = '', attrs = '' } = {}) {
+function ruleText(c) {
   const d = CARD_TYPES[c.type];
+  if (d.kind === 'duo') return c.type === 'raccoon' || c.type === 'badger' ? '1 point per Raccoon + Badger pair' : `1 point per pair of ${d.name}s`;
+  if (d.kind === 'collect') return `${d.name}s score ${d.text}`;
+  if (d.kind === 'mult') return `${d.name}: ${d.text.replace(/^(\d)/, (n) => n + (n === '1' ? ' point' : ' points'))} (multiplier)`;
+  return 'Deer score your next-largest color group (counts as Black & White)';
+}
+function contrib(c) {
+  if (!ownIds.has(c.id)) return '';
+  const d = CARD_TYPES[c.type];
+  if (d.kind === 'mermaid') { const it = view.myScore?.items.find((i) => /Deer$/.test(i.label)); return it ? ` You score ${it.pts} from your Deer now.` : ''; }
+  const t = d.kind === 'mult' ? [c.type, MULT_OF[c.type]] : c.type === 'raccoon' || c.type === 'badger' ? ['raccoon', 'badger'] : [c.type];
+  return ` This group scores you ${game.scoreCards(mineCards.filter((x) => t.includes(x.type))).total} now.`;
+}
+function cardHTML(c, { cls = '', act = '', attrs = '', quiet = false } = {}) {
+  const d = CARD_TYPES[c.type], col = COLOR_NAMES[c.color], tip = ruleText(c) + '.' + contrib(c);
   const tag = act ? 'button' : 'div';
-  const enter = seen.has(c.id) ? '' : ' enter';
-  return `<${tag} class="card col-${c.color}${enter} ${cls}" ${act ? `data-act="${act}"` : ''} data-id="${c.id}" ${attrs}
-    title="${d.name} · ${COLOR_NAMES[c.color]} — ${d.text}">
-    <span class="ctop"><b>${d.name}</b><i class="pip" title="${COLOR_NAMES[c.color]}"></i></span>
+  const enter = quiet || seen.has(c.id) ? '' : ' enter';
+  return `<${tag} class="card col-${c.color}${enter} ${cls}" ${act ? `data-act="${act}"` : 'role="group"'} data-id="${c.id}" ${attrs}
+    aria-label="${esc(`${d.name}, ${col}, marker ${MARKS[c.color]}. ${tip}`)}" data-tip="${esc(tip)}">
+    <span class="ctop"><b>${d.name}</b><i class="pip" aria-hidden="true">${MARKS[c.color]}</i></span>
     ${iconSVG(d.icon)}
     <span class="ctext">${d.text}</span>
   </${tag}>`;
 }
 const miniHTML = (c) => `<span class="chip col-${c.color}" title="${CARD_TYPES[c.type].name}">${iconSVG(CARD_TYPES[c.type].icon)}</span>`;
-const pairsHTML = (played) => played.map((pr) => `<span class="pairgrp${pr.some((c) => seenPlayed.has(c.id)) ? '' : ' pop'}">${pr.map(miniHTML).join('')}</span>`).join('');
+const playedCard = (c) => cardHTML(c, { cls: 'sm', quiet: true });
+const pairsHTML = (played) => played.map((pr) => `<span class="pairgrp${pr.some((c) => seenPlayed.has(c.id)) ? '' : ' pop'}">${pr.map(playedCard).join('')}</span>`).join('');
 const backs = (n) => Array.from({ length: Math.min(n, 12) }, () => '<span class="back"></span>').join('');
 const sortHand = (h) => [...h].sort((a, b) => Object.keys(CARD_TYPES).indexOf(a.type) - Object.keys(CARD_TYPES).indexOf(b.type) || a.color.localeCompare(b.color));
 
 // ---------- render ----------
 function render() {
+  const me = view?.players?.[myId];
+  mineCards = me?.hand ? [...me.hand, ...me.played.flat()] : []; ownIds = new Set(mineCards.map((c) => c.id));
+  $('logBtn').hidden = !!menu || !view?.log;
+  if ($('logDlg').open) fillLog();
   if (menu) renderMenu();
   else if (view.phase === 'lobby') renderLobby();
   else {
@@ -238,10 +261,14 @@ function renderTable() {
     prompt = 'Raccoon + Badger: steal a random card from an opponent.';
     buttons = opps.filter((p) => p.handCount).map((p) => `<button class="secondary" data-act="steal" data-target="${p.id}">Steal from ${esc(p.name)}</button>`).join('');
   } else if (step === 'fox') {
-    prompt = 'Fox: look through a pile and take any card from it.';
-    pending = (v.piles || []).map((pile, pi) => pile.length
-      ? `<div class="pilegroup"><span class="plabel">Pile ${pi + 1}</span><div class="pcards">${pile.map((c) => cardHTML(c, { act: 'foxpick', attrs: `data-pile="${pi}"` })).join('')}</div></div>`
-      : '').join('');
+    if (v.foxPile == null) {
+      prompt = 'Fox: choose one pile to look through.';
+      buttons = [0, 1].filter((i) => v.discards[i].count).map((i) =>
+        `<button class="secondary" data-act="foxpile" data-pile="${i}">Look through Pile ${i + 1} (${v.discards[i].count})</button>`).join('');
+    } else {
+      prompt = `Fox: take any card from Pile ${v.foxPile + 1}.`;
+      pending = `<div class="pilegroup"><span class="plabel">Pile ${v.foxPile + 1}</span><div class="pcards">${(v.foxCards || []).map((c) => cardHTML(c, { act: 'foxpick' })).join('')}</div></div>`;
+    }
   } else if (step === 'play') {
     const selCards = sel.map((id) => me.hand.find((c) => c.id === id));
     const pairOk = selCards.length === 2 && !!game.pairEffect(selCards[0].type, selCards[1].type);
@@ -298,7 +325,7 @@ function reasonText(r) {
 function resultRows() {
   return view.result.rows.map((r) => `<div class="rrow">
     <div class="rhead"><b>${esc(r.name)}</b><span class="gain">+${r.gained}</span><span class="muted">${view.players[r.id].score} total</span></div>
-    <div class="rcards">${[...r.played.flat(), ...sortHand(r.hand)].map(miniHTML).join('')}</div>
+    <div class="rcards">${[...r.played.flat(), ...sortHand(r.hand)].map(playedCard).join('')}</div>
     <div class="rbreak">${r.breakdown.items.map((it) => `${esc(it.label)} <b>${it.pts}</b>`).join(' · ') || 'no points'} · cards <b>${r.breakdown.total}</b> · color bonus <b>${r.breakdown.colorBonus}</b></div>
   </div>`).join('');
 }
@@ -357,7 +384,8 @@ app.addEventListener('click', (e) => {
       return;
     }
     case 'pend': pendSel = i; return render();
-    case 'foxpick': return send({ type: 'fox', pile: +el.dataset.pile, cardId: +el.dataset.id });
+    case 'foxpile': return send({ type: 'foxPile', pile: +el.dataset.pile });
+    case 'foxpick': return send({ type: 'fox', cardId: +el.dataset.id });
     case 'hand': {
       const id = +el.dataset.id;
       if (view.step === 'play') sel = sel.includes(id) ? sel.filter((x) => x !== id) : [...sel, id].slice(-2);
@@ -381,6 +409,11 @@ app.addEventListener('input', (e) => {
 // ---------- help ----------
 $('helpCards').innerHTML = Object.entries(CARD_TYPES).map(([type, d]) =>
   `<div class="hcard">${miniHTML({ type, color: d.color || 'mono' })}<div><b>${d.name}</b> ×${d.count} — ${d.text}</div></div>`).join('');
+const legendItem = (col, label) => `<div class="lg col-${col}"><span class="sw">${MARKS[col]}</span><span>${label}</span></div>`;
+$('helpColors').innerHTML = game.COLORS.map((c) => legendItem(c, COLOR_NAMES[c])).join('')
+  + Object.values(CARD_TYPES).filter((d) => d.kind === 'mult').map((d) => legendItem(d.color, `${COLOR_NAMES[d.color]} = ${d.name}`)).join('');
+function fillLog() { $('logList').innerHTML = [...(view?.log || [])].reverse().map((l) => `<li>${esc(l)}</li>`).join(''); }
+$('logBtn').onclick = () => { fillLog(); $('logDlg').showModal(); };
 $('helpBtn').onclick = () => $('help').showModal();
 
 // ---------- boot ----------

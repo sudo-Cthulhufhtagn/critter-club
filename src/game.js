@@ -107,13 +107,13 @@ export function startRound(s) {
   s.discards = [[s.deck.pop()], [s.deck.pop()]];
   for (const p of s.players) { p.hand = []; p.played = []; }
   s.currentIdx = s.starterIdx % s.players.length;
-  Object.assign(s, { phase: 'playing', step: 'draw', pending: [], extraTurn: false, call: null, result: null });
+  Object.assign(s, { phase: 'playing', step: 'draw', pending: [], extraTurn: false, call: null, result: null, foxPile: null });
   log(s, `Round ${s.round} — ${cur(s).name} starts.`);
 }
 
 const cur = (s) => s.players[s.currentIdx];
 const name = (s, id) => s.players[id].name;
-function log(s, msg) { s.log.push(msg); if (s.log.length > 30) s.log.shift(); }
+function log(s, msg) { s.log.push(msg); if (s.log.length > 100) s.log.shift(); }
 const takeById = (arr, id) => { const i = arr.findIndex((c) => c.id === id); return i < 0 ? null : arr.splice(i, 1)[0]; };
 // The pile a card must go to: an empty pile is forced; otherwise the caller's choice.
 const isPile = (pile) => pile === 0 || pile === 1; // untrusted input: 'constructor' etc. must not index arrays
@@ -185,14 +185,20 @@ export function act(s, pid, a) {
     return true;
   }
 
-  // Crab: look through one pile and take ANY card from it.
+  // Crab: first commit to ONE pile, then take ANY card from it — the other pile stays hidden.
   if (s.step === 'fox') {
-    if (a.type !== 'fox' || !isPile(a.pile) || !s.discards[a.pile].length) return false;
-    const c = takeById(s.discards[a.pile], a.cardId);
+    if (a.type === 'foxPile') {
+      if (!isPile(a.pile) || !s.discards[a.pile].length) return false;
+      s.foxPile = a.pile;
+      return true;
+    }
+    if (a.type !== 'fox' || s.foxPile == null) return false;
+    const c = takeById(s.discards[s.foxPile], a.cardId);
     if (!c) return false;
     p.hand.push(c);
     s.step = 'play';
-    log(s, `${p.name} takes a ${CARD_TYPES[c.type].name} from pile ${a.pile + 1}.`);
+    log(s, `${p.name} takes a ${CARD_TYPES[c.type].name} from pile ${s.foxPile + 1}.`);
+    s.foxPile = null;
     checkMermaid(s, p);
     return true;
   }
@@ -224,8 +230,8 @@ function playPair(s, p, ids) {
     : `${p.name} plays a Raccoon + Badger.`);
   if (eff === 'capybara') { if (s.deck.length) { p.hand.push(s.deck.pop()); checkMermaid(s, p); } } // Fish: draw top to hand
   else if (eff === 'steal') { if (s.players.some((q) => q.id !== p.id && q.hand.length)) s.step = 'steal'; }
-  else if (eff === 'fox') { if (s.discards[0].length || s.discards[1].length) s.step = 'fox'; }
-  else if (eff === 'rabbit') s.extraTurn = true;
+  else if (eff === 'fox') { if (s.discards[0].length || s.discards[1].length) { s.step = 'fox'; s.foxPile = null; } }
+  else if (eff === 'rabbit') { s.extraTurn = true; nextTurn(s); } // Boat: take the extra turn immediately, no End turn needed
   return true;
 }
 
@@ -271,8 +277,9 @@ export function publicState(s, viewerId) {
     ...rest,
     deckCount: deck.length,
     discards: s.discards.map((d) => ({ top: d[d.length - 1] || null, count: d.length })),
-    // Crab reveals the piles to the chooser only.
-    piles: mine && s.step === 'fox' ? s.discards.map((d) => [...d]) : null,
+    // Crab: reveal only the pile the chooser has committed to (never both at once).
+    foxPile: mine && s.step === 'fox' ? (s.foxPile ?? null) : null,
+    foxCards: mine && s.step === 'fox' && s.foxPile != null ? [...s.discards[s.foxPile]] : null,
     pending: mine ? s.pending : [],
     pendingCount: s.pending.length,
     players: s.players.map((p) => ({
@@ -293,7 +300,10 @@ export function legalActions(s) {
   if (s.step === 'draw') { out.push({ type: 'draw' }); piles.forEach((pile) => out.push({ type: 'take', pile })); }
   if (s.step === 'choose') for (const index of [0, 1]) for (const pile of [0, 1]) if (pileOk(s, pile)) out.push({ type: 'keep', index, pile });
   if (s.step === 'steal') for (const t of s.players) if (t.id !== p.id && t.hand.length) out.push({ type: 'steal', target: t.id });
-  if (s.step === 'fox') piles.forEach((pile) => s.discards[pile].forEach((c) => out.push({ type: 'fox', pile, cardId: c.id })));
+  if (s.step === 'fox') {
+    if (s.foxPile == null) piles.forEach((pile) => out.push({ type: 'foxPile', pile }));
+    else s.discards[s.foxPile].forEach((c) => out.push({ type: 'fox', cardId: c.id }));
+  }
   if (s.step === 'play') {
     for (const t of ['fox', 'rabbit', 'capybara']) {
       const cs = p.hand.filter((c) => c.type === t);
@@ -322,8 +332,8 @@ export function botAction(s) {
   }
   if (s.step === 'steal') return acts[0]; // steal from the first opponent who has cards
   if (s.step === 'fox') {
-    const good = acts.find((a) => want(s.discards[a.pile].find((c) => c.id === a.cardId)));
-    return good || acts[0];
+    if (s.foxPile == null) return acts.find((a) => s.discards[a.pile].some(want)) || acts[0];
+    return acts.find((a) => want(s.discards[s.foxPile].find((c) => c.id === a.cardId))) || acts[0];
   }
   if (s.step === 'play') {
     const pair = acts.find((a) => a.type === 'pair');

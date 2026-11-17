@@ -115,9 +115,8 @@ ok(s, 0, { type: 'take', pile: 0 });
 no(s, 0, { type: 'pair', cards: [r1.id, s.players[0].hand[2].id] }); // mixed types that don't pair
 ok(s, 0, { type: 'pair', cards: [r1.id, r2.id] });
 assert.equal(s.players[0].played.length, 1);
-ok(s, 0, { type: 'end' });
 assert.equal(s.currentIdx, 0, 'rabbit: same player again');
-assert.equal(s.step, 'draw');
+assert.equal(s.step, 'draw', 'rabbit: jumps straight to the extra turn, no End turn needed');
 ok(s, 0, { type: 'take', pile: 1 });
 ok(s, 0, { type: 'end' });
 assert.equal(s.currentIdx, 1, 'but only once');
@@ -163,16 +162,21 @@ ok(s, 0, { type: 'take', pile: 1 });        // take rabbit, leaves pile 0 with 2
 s.players[0].hand = [f1, f2];
 ok(s, 0, { type: 'pair', cards: [f1.id, f2.id] });
 assert.equal(s.step, 'fox');
-no(s, 0, { type: 'fox', pile: 0, cardId: 99999 }); // not in the pile
-ok(s, 0, { type: 'fox', pile: 0, cardId: buried.id }); // the buried card, not the top
+no(s, 0, { type: 'fox', cardId: buried.id }); // must choose a pile first
+ok(s, 0, { type: 'foxPile', pile: 0 });       // commit to pile 0
+assert.equal(s.foxPile, 0);
+no(s, 0, { type: 'fox', cardId: 99999 });      // not in the pile
+ok(s, 0, { type: 'fox', cardId: buried.id });  // the buried card, not the top
 assert.ok(s.players[0].hand.includes(buried), 'took the buried card');
 assert.equal(s.discards[0].at(-1), topCard, 'top card stays');
-// legalActions enumerates every card in both piles.
+// legalActions: pick a pile first, then one action per card in that pile only.
 s = rig();
 s.discards = [[C('mole'), C('penguin')], [C('wombat')]];
 s.players[0].hand = [C('fox'), C('fox')];
-s.step = 'fox';
-assert.equal(legalActions(s).filter((a) => a.type === 'fox').length, 3, 'fox: one action per card in both piles');
+s.step = 'fox'; s.foxPile = null;
+assert.equal(legalActions(s).filter((a) => a.type === 'foxPile').length, 2, 'fox: first, one choice per non-empty pile');
+s.foxPile = 0;
+assert.equal(legalActions(s).filter((a) => a.type === 'fox').length, 2, 'fox: then one action per card in the chosen pile');
 
 // ---------- mermaid instant win on every acquisition path ----------
 // via take-from-discard
@@ -254,11 +258,14 @@ assert.equal(v1.players[0].hand, null);
 assert.equal(v1.myScore.total, 0);
 assert.ok(v1.discards.every((d) => !Array.isArray(d)), 'only pile tops are sent');
 assert.ok(!JSON.stringify(v1).includes('"deck"'));
-// Crab reveals the piles to the chooser only.
+// Crab reveals only the committed pile, to the chooser only.
 s = startGame(['A', 'B']);
-s.step = 'fox'; s.discards = [[C('mole'), C('penguin')], [C('wombat')]];
-assert.equal(publicState(s, 0).piles.length, 2, 'chooser sees full piles during fox');
-assert.equal(publicState(s, 1).piles, null, 'opponents do not');
+s.step = 'fox'; s.foxPile = null; s.discards = [[C('mole'), C('penguin')], [C('wombat')]];
+assert.equal(publicState(s, 0).foxCards, null, 'no pile revealed before one is chosen');
+s.foxPile = 0;
+assert.equal(publicState(s, 0).foxCards.length, 2, 'chooser sees the chosen pile only');
+assert.ok(!publicState(s, 0).foxCards.some((c) => c.type === 'wombat'), 'the other pile stays hidden');
+assert.equal(publicState(s, 1).foxCards, null, 'opponents see no pile contents');
 
 // ---------- fuzz: full games with random / bot players ----------
 const countCards = (s) => s.deck.length + s.discards[0].length + s.discards[1].length + s.pending.length

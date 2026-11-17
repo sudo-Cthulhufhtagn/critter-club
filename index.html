@@ -8,6 +8,7 @@
 </head>
 <body>
   <button id="helpBtn" class="helpbtn" aria-label="How to play" title="How to play">?</button>
+  <button id="logBtn" class="helpbtn logbtn" aria-label="Play log" title="Play log" hidden>📜 Log</button>
   <div id="toast" class="toast" role="status" hidden></div>
   <main id="app"></main>
 
@@ -27,8 +28,17 @@
     <p class="muted">If the deck is empty when you have to draw, the round ends and nobody scores.</p>
     <h3>Deer</h3>
     <p>Each Deer scores your next-largest colour group (Deer count as black &amp; white). <b>Collect all four Deer and you win the game instantly.</b></p>
+    <h3>Colors</h3>
+    <p>Every card has a color, shown by its swatch <i>and</i> a marker (shape or letters) so you never need to rely on hue. The <b>color bonus</b> is the number of your cards in your most common color. Each <b>Deer</b> (a mermaid, counted as Black &amp; White) scores your next-largest color group. The four unique colors belong to one multiplier card each.</p>
+    <div id="helpColors" class="legend"></div>
     <h3>The critters</h3>
     <div id="helpCards"></div>
+  </dialog>
+
+  <dialog id="logDlg">
+    <form method="dialog" class="dhead"><h2>Play log</h2><button class="mini" aria-label="Close">✕</button></form>
+    <p class="muted">Newest first.</p>
+    <ol id="logList" class="loglist"></ol>
   </dialog>
 
   <script type="module" src="./src/main.js"></script>
